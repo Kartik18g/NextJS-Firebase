@@ -1,6 +1,6 @@
 import { auth, firestore, db } from '../lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { collection, getDocs, doc, getDoc, onSnapshot } from "firebase/firestore";
+import { signInWithPopup, GoogleAuthProvider, signInAnonymously, signOut, signonAuthStateChanged } from 'firebase/auth';
+import { collection, getDocs, doc, getDoc, addDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState, useCallback, useContext } from 'react';
 import debounce from 'lodash.debounce';
 import { UserContext } from '../lib/context';
@@ -43,7 +43,7 @@ function SignInButton() {
 
 // Sign out button
 function SignOutButton() {
-    return <button onClick={() => auth.signOut()}>Sign Out</button>;
+    return <button onClick={() => signOut(auth)}>Sign Out</button>;
 }
 
 // Username form
@@ -51,22 +51,21 @@ function UsernameForm() {
     const [formValue, setFormValue] = useState('');
     const [isValid, setIsValid] = useState(false);
     const [loading, setLoading] = useState(false);
-    const user = null
-    const username = null
+    const { user, username } = useContext(UserContext)
+
 
     const onSubmit = async (e) => {
         e.preventDefault();
 
-        // Create refs for both documents
-        const userDoc = firestore.doc(`users/${user.uid}`);
-        const usernameDoc = firestore.doc(`usernames/${formValue}`);
+        // const userDoc = await addDoc(collection(db, "users"), { username: formValue, photoURL: user.photoURL, displayName: user.displayName });
+        // const usernameDoc = await addDoc(collection(db, "usernames"), { uid: user.uid });
 
-        // Commit both docs together as a batch write.
-        const batch = firestore.batch();
-        batch.set(userDoc, { username: formValue, photoURL: user.photoURL, displayName: user.displayName });
-        batch.set(usernameDoc, { uid: user.uid });
 
-        await batch.commit();
+        const userDoc = doc(db, "users", user.uid);
+        await setDoc(userDoc, { username: formValue, photoURL: user.photoURL, displayName: user.displayName });
+        const usernameDoc = doc(db, "usernames", formValue);
+        await setDoc(usernameDoc, { uid: user.uid });
+
     };
 
     const onChange = (e) => {
@@ -99,11 +98,9 @@ function UsernameForm() {
     const checkUsername = useCallback(
         debounce(async (username) => {
             if (username.length >= 3) {
-                const ref = doc(db, "usernames", username);
-                const snap = getDoc(ref)
+                const docRef = doc(db, "usernames", username);
+                const snap = getDoc(docRef)
                 const exists = (await snap).exists();
-                console.log('Firestore read executed!');
-                console.log(exists);
                 setIsValid(!exists);
                 setLoading(false);
             }
@@ -141,6 +138,8 @@ function UsernameMessage({ username, isValid, loading }) {
         return <p>Checking...</p>;
     } else if (isValid) {
         return <p className="text-success">{username} is available!</p>;
+    } else if (username.length < 3) {
+        return <p className="text-danger">Username needs to be longer than 3 characters</p>;
     } else if (username && !isValid) {
         return <p className="text-danger">That username is taken!</p>;
     } else {
